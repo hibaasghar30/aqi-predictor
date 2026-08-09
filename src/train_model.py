@@ -8,7 +8,9 @@ from sklearn.model_selection import train_test_split       # splits data into "p
 from sklearn.linear_model import Ridge                       # METHOD 1: one way of learning the aqi pattern
 from sklearn.ensemble import RandomForestRegressor            # METHOD 2: a different way of learning the aqi pattern
 from sklearn.preprocessing import StandardScaler               # adjusts numbers to a similar scale - Ridge needs this to learn well
-from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score   # STEP 3: three ways to score how good each method's guesses were
+from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score 
+from xgboost import XGBRegressor
+  # STEP 3: three ways to score how good each method's guesses were
 #model predicted AQI as 80, but the real AQI was 75. That's a mistake of 5.
 #   1.  mean_absolute_error (MAE)
 #Takes every mistake, ignores whether it was too high or too low, and just averages how far off 
@@ -138,17 +140,30 @@ def train_and_evaluate():
     forest_r2 = r2_score(y_test, forest_predictions)
     print(f"Random Forest - RMSE: {forest_rmse:.2f}, MAE: {forest_mae:.2f}, R2: {forest_r2:.2f}")
 
+#----------------------------------      TRAINING XGBOOST      -----------------------------
+    xgb_model = XGBRegressor(random_state=42)
+    xgb_model.fit(x_train, y_train)
+
+    xgb_predictions = xgb_model.predict(x_test)
+    xgb_rmse = mean_squared_error(y_test, xgb_predictions) ** 0.5
+    xgb_mae = mean_absolute_error(y_test, xgb_predictions)
+    xgb_r2 = r2_score(y_test, xgb_predictions)
+    print(f"XGBoost - RMSE: {xgb_rmse:.2f}, MAE: {xgb_mae:.2f}, R2: {xgb_r2:.2f}")
 
 
-#compare both models - lower RMSE wins
-    if forest_rmse < ridge_rmse:
-        best_model = forest
-        best_name = "random_forest"
-        needs_scaler = False
-    else:
-        best_model = ridge
-        best_name = "ridge"
-        needs_scaler = True
+#compare all three models - lower RMSE wins
+
+
+    candidates = {
+        "ridge": (ridge, ridge_rmse),
+        "random_forest": (forest, forest_rmse),
+        "xgboost": (xgb_model, xgb_rmse),
+    }
+
+    best_name = min(candidates, key=lambda name: candidates[name][1])
+    best_model = candidates[best_name][0]
+    best_rmse = candidates[best_name][1]
+    needs_scaler = (best_name == "ridge")
 
     print(f"Winner: {best_name}")
 
@@ -180,7 +195,7 @@ def train_and_evaluate():
 
     hw_model = mr.python.create_model(
         name="aqi_best_model",
-        metrics={"rmse": min(ridge_rmse, forest_rmse)},
+        metrics={"rmse": best_rmse},
         description=f"Best AQI model - {best_name}",
     )
 
