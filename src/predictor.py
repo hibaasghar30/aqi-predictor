@@ -4,24 +4,34 @@ import pandas as pd
 from src import config
 from src.openweather_client import geocode, get_current_weather, get_air_pollution
 from src.feature_engineering import build_feature_row
-
+import hopsworks
+from pathlib import Path
 
 def load_model():
-    model = joblib.load(config.MODEL_FILE)
+    # log in to Hopsworks so we can reach the Model Registry
+    project = hopsworks.login(
+        api_key_value=config.HOPSWORKS_API_KEY,
+        project=config.HOPSWORKS_PROJECT_NAME,
+    )
+    mr = project.get_model_registry()
 
-# open lets python open the file same as double clicking
-#r is a mode known as read , it allows to read the file
-#f is just the short form of the file you opened
-#json.load read the file and converts it into python dict and hands that dict to metadata
-    with open(config.MODEL_METADATA_FILE ,"r") as f:
-        metadata= json.load(f)
+    # ask the registry for whichever uploaded "aqi_best_model" has the lowest rmse
+    hw_model = mr.get_best_model(name="aqi_best_model", metric="rmse", direction="min")
 
-        scaler = None  #assumes that no converter is needed
-        if metadata.get("needs_scaler"):   #checks if a scaler is actually needed
-            scaler = joblib.load(config.MODEL_DIR/ "scaler.joblib")  #loads the data from this file
-    return model , scaler , metadata
-  # hands back the file that was opened , converter (if needed) and metadata (the stickynotes)
+    # download() pulls that model's files into a temp folder and returns the path to it
+    download_dir = Path(hw_model.download())
 
+    # load everything from that downloaded folder instead of local models/
+    model = joblib.load(download_dir / "best_model.joblib")
+
+    with open(download_dir / "model_metadata.json", "r") as f:
+        metadata = json.load(f)
+
+    scaler = None
+    if metadata.get("needs_scaler"):
+        scaler = joblib.load(download_dir / "scaler.joblib")
+
+    return model, scaler, metadata
 def get_live_row():
 #conerts cityname to long lat coordiantes
         lat, lon = geocode(config.CITY_NAME, config.COUNTRY_CODE)
