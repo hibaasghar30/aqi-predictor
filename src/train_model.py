@@ -44,26 +44,31 @@ def load_training_data():
         project=config.HOPSWORKS_PROJECT_NAME,
     )
     fs = project.get_feature_store()
-
-    #get the same feature group we've been saving to
+#get the same feature group we've been saving to
     fg = fs.get_or_create_feature_group(
         name="aqi_features",
-        version=1,
+        version=2,
         primary_key=["city", "timestamp"],
-        description="AQI and weather features for Karachi",
+        description="AQI and weather features for Karachi, with rolling averages and multi-horizon targets",
         time_travel_format="HUDI",
     )
 
-    #read all the data currently in the feature group
     df = fg.read()
-    print(f"Loaded {len(df)} rows from the feature store")
-
-    before = len(df)
-    df = df.dropna()
-    after = len(df)
-    print(f"{after} rows usable after dropping incomplete ones")
-
+    print(f"Loaded {len(df)} rows from the feature store (version 2)")
     return df
+
+
+
+
+#builds three file paths (model file, metadata file, scaler file) with the horizon name baked into each filename, e.g. models/best_model_24h.joblib — so the 24h, 48h, and 72h models each get their own distinct files instead of overwriting one shared file.
+def get_model_paths(horizon_name):
+    horizon_dir = config.MODEL_DIR / horizon_name
+    horizon_dir.mkdir(exist_ok=True)
+
+    model_file = horizon_dir / "best_model.joblib"
+    metadata_file = horizon_dir / "model_metadata.json"
+    scaler_file = horizon_dir / "scaler.joblib"
+    return model_file, metadata_file, scaler_file
 
 
 
@@ -73,120 +78,86 @@ def load_training_data():
 #print(df)
 
 
-def train_and_evaluate():
-    df = load_training_data()
+def train_one_horizon(df, horizon_name, target_column):
+    print(f"\n===== Training {horizon_name} model (target: {target_column}) =====")
 
-#model willlearn form these columns (take input)
-    feature_columns = ["pm2_5", "pm10", "co", "no2","so2", "o3", "temperature", "humidity" ,
-                        "pressure" , "wind_speed", "hour", "day", "month" , "day_of_week"]
+    feature_columns = [
+        "pm2_5", "pm10", "co", "no2", "so2", "o3", "temperature", "humidity",
+        "pressure", "wind_speed", "hour", "day", "month", "day_of_week",
+        "aqi", "aqi_avg_24h", "aqi_avg_48h", "aqi_avg_72h",
+    ]
 
+    # only drop rows missing something THIS horizon actually needs
+    needed_columns = feature_columns + [target_column]
+    horizon_df = df.dropna(subset=needed_columns)
+    print(f"{len(horizon_df)} / {len(df)} rows usable for {horizon_name} (after dropping incomplete ones)")
 
-# model willpredict (output)
+    x = horizon_df[feature_columns]
+    y = horizon_df[target_column]
 
-    target_column = "aqi"
-    #saves the feature columns
-    x = df[feature_columns]  
-    #save the answers
-    y = df[target_column]    
+    x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.2, random_state=42)
 
- 
+    #----------------------------------      TRAINING RIDGE      -----------------------------
+    scaler = StandardScaler()
+    x_train_scaled = scaler.fit_transform(x_train)
+    x_test_scaled = scaler.transform(x_test)
 
-#split into practice data(train) and quiz data (test)
-    x_train, x_test, y_train , y_test = train_test_split( x, y , test_size=0.2, random_state=42)
-
-
-#----------------------------------      TRAINING RIDGE      -----------------------------
-
-    scaler = StandardScaler()  #center values around zero because rigidlearns it better this way
-    x_train_scaled = scaler.fit_transform(x_train)  #read the x_train values using .fit and center them around 0  usning _transform
-
-    x_test_scaled = scaler.transform(x_test) #center the x_test values around zero and uses the same average
-
-
-    ridge = Ridge()   #creates a empty ridge nmodel
-    ridge.fit(x_train_scaled, y_train)  #reads wtv is stored in x_train_sclaed(the converted values that were changed to center around zero) and y_train (the naswers)
-
-
-#predicts using only X_test_scaled — the quiz clues, which the already-trained ridge model has never seen before. The result (the guessed AQI values) gets stored in ridge_predictions.
-
+    ridge = Ridge()
+    ridge.fit(x_train_scaled, y_train)
     ridge_predictions = ridge.predict(x_test_scaled)
-
-#----------        RMSE AND MAE ASKS HOW BIG WERE THE MISTAKES ON AVERAGE         ---------------
-#it checks the "(y_test) the correct answers" to "(ridge_predictions) the predicted answers"  by squaring the mistakes and then take its square root
-    ridge_rmse =mean_squared_error(y_test, ridge_predictions) **0.5
-
-
-#instead of squaring the mistakes, mean_absolute_error just takes the plain, straightforward size of each mistake
+    ridge_rmse = mean_squared_error(y_test, ridge_predictions) ** 0.5
     ridge_mae = mean_absolute_error(y_test, ridge_predictions)
-
-#--------     R2 scores how smart the model's guesses were, from 0 (dumb) to 1 (perfect).     ----
     ridge_r2 = r2_score(y_test, ridge_predictions)
-#how much did the model actually understand, not just how close were the guesses
-#below 0 = the model is doing worse than just guessing the average
-
-
     print(f"Ridge - RMSE: {ridge_rmse:.2f}, MAE: {ridge_mae:.2f}, R2: {ridge_r2:.2f}")
 
-
-#----------------------------------      TRAINING RANDOM FOREST      -----------------------------
+    #----------------------------------      TRAINING RANDOM FOREST      -----------------------------
     forest = RandomForestRegressor(random_state=42)
     forest.fit(x_train, y_train)
-
-#test Random Forest on the quiz data
     forest_predictions = forest.predict(x_test)
-#score how good Random Forest's guesses were
     forest_rmse = mean_squared_error(y_test, forest_predictions) ** 0.5
     forest_mae = mean_absolute_error(y_test, forest_predictions)
     forest_r2 = r2_score(y_test, forest_predictions)
     print(f"Random Forest - RMSE: {forest_rmse:.2f}, MAE: {forest_mae:.2f}, R2: {forest_r2:.2f}")
 
-#----------------------------------      TRAINING XGBOOST      -----------------------------
+    #----------------------------------      TRAINING XGBOOST      -----------------------------
     xgb_model = XGBRegressor(random_state=42)
     xgb_model.fit(x_train, y_train)
-
     xgb_predictions = xgb_model.predict(x_test)
     xgb_rmse = mean_squared_error(y_test, xgb_predictions) ** 0.5
     xgb_mae = mean_absolute_error(y_test, xgb_predictions)
     xgb_r2 = r2_score(y_test, xgb_predictions)
     print(f"XGBoost - RMSE: {xgb_rmse:.2f}, MAE: {xgb_mae:.2f}, R2: {xgb_r2:.2f}")
 
-
-#compare all three models - lower RMSE wins
-
-
+    #compare all three models - lower RMSE wins
     candidates = {
         "ridge": (ridge, ridge_rmse),
         "random_forest": (forest, forest_rmse),
         "xgboost": (xgb_model, xgb_rmse),
     }
-
     best_name = min(candidates, key=lambda name: candidates[name][1])
     best_model = candidates[best_name][0]
     best_rmse = candidates[best_name][1]
     needs_scaler = (best_name == "ridge")
 
-    print(f"Winner: {best_name}")
+    print(f"Winner for {horizon_name}: {best_name}")
 
-    #save the winning model to disk
-    joblib.dump(best_model, config.MODEL_FILE)
+    model_file, metadata_file, scaler_file = get_model_paths(horizon_name)
 
-    #if ridge won, also save the scaler (predictor.py needs it to convert live data)
+    joblib.dump(best_model, model_file)
     if needs_scaler:
-        joblib.dump(scaler, config.MODEL_DIR / "scaler.joblib")
+        joblib.dump(scaler, scaler_file)
 
-    #save notes about the winner, so predictor.py knows how to use it
     metadata = {
+        "horizon": horizon_name,
         "best_model": best_name,
         "needs_scaler": needs_scaler,
         "feature_columns": feature_columns,
     }
-    with open(config.MODEL_METADATA_FILE, "w") as f:
+    with open(metadata_file, "w") as f:
         json.dump(metadata, f)
 
-    print("Model and metadata saved.")
+    print(f"{horizon_name} model and metadata saved.")
 
-
-#upload the saved model to Hopsworks Model Registry
     project = hopsworks.login(
         api_key_value=config.HOPSWORKS_API_KEY,
         project=config.HOPSWORKS_PROJECT_NAME,
@@ -194,15 +165,19 @@ def train_and_evaluate():
     mr = project.get_model_registry()
 
     hw_model = mr.python.create_model(
-        name="aqi_best_model",
+        name=f"aqi_best_model_{horizon_name}",
         metrics={"rmse": best_rmse},
-        description=f"Best AQI model - {best_name}",
+        description=f"Best AQI model for {horizon_name} horizon - {best_name}",
     )
+    hw_model.save(str(model_file.parent))
+    #wrong method: hw_model.save(str(config.MODEL_DIR))
+    print(f"{horizon_name} model uploaded to Hopsworks Model Registry as 'aqi_best_model_{horizon_name}'.")
 
-    #uploads everything inside the models/ folder (the joblib file + metadata json)
-    hw_model.save(str(config.MODEL_DIR))
+def train_and_evaluate():
+    df = load_training_data()
+    train_one_horizon(df, "24h", "aqi_24h_ahead")
+    train_one_horizon(df, "48h", "aqi_48h_ahead")
+    train_one_horizon(df, "72h", "aqi_72h_ahead")
 
-    print("Model uploaded to Hopsworks Model Registry.")
 
 train_and_evaluate()
- 

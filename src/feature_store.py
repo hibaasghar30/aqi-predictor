@@ -59,8 +59,8 @@ def get_last_row():
 
 
 #testing get_last_row with hopsworks
-last = get_last_row()
-print(last)
+#last = get_last_row()
+#print(last)
 
 
 
