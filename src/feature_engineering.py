@@ -49,7 +49,6 @@ def build_feature_row(city_name, weather_data,pollution_data):
         "month": now.month,
         "day_of_week": now.weekday(),
         "aqi": aqi,
-        "aqi": aqi,
         "aqi_change_rate": round(aqi_change_rate, 2),
         "timestamp": now.isoformat(),
   }
@@ -57,26 +56,6 @@ def build_feature_row(city_name, weather_data,pollution_data):
   return row
 
 
-from src.openweather_client import geocode, get_current_weather, get_air_pollution
 
-lat, lon = geocode("Karachi", "PK")
-weather = get_current_weather(lat, lon)
-pollution = get_air_pollution(lat, lon)
-
-row = build_feature_row("Karachi", weather, pollution)
-print(row)
-
-
-  #testing of feature_store.py file on line 22
-from src.feature_store import save_row
-
-lat, lon = geocode("Karachi", "PK")
-weather = get_current_weather(lat, lon)
-pollution = get_air_pollution(lat, lon)
-
-row = build_feature_row("Karachi", weather, pollution)
-print(row)
-
-save_row(row)
 
 

@@ -6,8 +6,29 @@ from src.openweather_client import geocode, get_current_weather, get_air_polluti
 from src.feature_engineering import build_feature_row
 import hopsworks
 from pathlib import Path
+from src.feature_store import get_feature_store
 
-def load_model():
+
+def get_recent_rolling_averages():
+    fs = get_feature_store()
+    fg = fs.get_or_create_feature_group(
+        name="aqi_features", version=1, primary_key=["city", "timestamp"],
+        description="AQI and weather features for Karachi", time_travel_format="HUDI",
+    )
+    df = fg.read()
+    df["timestamp"] = pd.to_datetime(df["timestamp"], format="mixed")
+    df = df.sort_values("timestamp")
+
+    latest_time = df["timestamp"].max()
+
+    return {
+        "aqi_avg_24h": df[df["timestamp"] >= latest_time - pd.Timedelta(hours=24)]["aqi"].mean(),
+        "aqi_avg_48h": df[df["timestamp"] >= latest_time - pd.Timedelta(hours=48)]["aqi"].mean(),
+        "aqi_avg_72h": df[df["timestamp"] >= latest_time - pd.Timedelta(hours=72)]["aqi"].mean(),
+    }
+
+
+def load_model(horizon_name):
     # log in to Hopsworks so we can reach the Model Registry
     project = hopsworks.login(
         api_key_value=config.HOPSWORKS_API_KEY,
@@ -15,13 +36,12 @@ def load_model():
     )
     mr = project.get_model_registry()
 
-    # ask the registry for whichever uploaded "aqi_best_model" has the lowest rmse
-    hw_model = mr.get_best_model(name="aqi_best_model", metric="rmse", direction="min")
+    # ask the registry for this horizon's best model by name
+    hw_model = mr.get_best_model(name=f"aqi_best_model_{horizon_name}", metric="rmse", direction="min")
 
     # download() pulls that model's files into a temp folder and returns the path to it
     download_dir = Path(hw_model.download())
 
-    # load everything from that downloaded folder instead of local models/
     model = joblib.load(download_dir / "best_model.joblib")
 
     with open(download_dir / "model_metadata.json", "r") as f:
@@ -32,26 +52,23 @@ def load_model():
         scaler = joblib.load(download_dir / "scaler.joblib")
 
     return model, scaler, metadata
+
+
 def get_live_row():
-#conerts cityname to long lat coordiantes
-        lat, lon = geocode(config.CITY_NAME, config.COUNTRY_CODE)
-#gets us the current  (temp, humidity, wind)
-        weather = get_current_weather(lat, lon)
-#fetch current pollution levels (pm2.5, pm10, co, no2 , nh3)
-        pollution= get_air_pollution(lat, lon)
-#combines both API responses into one clean row
-        row= build_feature_row(config.CITY_NAME, weather, pollution)
-        return row
+    #converts city name to long lat coordinates
+    lat, lon = geocode(config.CITY_NAME, config.COUNTRY_CODE)
+    #gets us the current (temp, humidity, wind)
+    weather = get_current_weather(lat, lon)
+    #fetch current pollution levels (pm2.5, pm10, co, no2, nh3)
+    pollution = get_air_pollution(lat, lon)
+    #combines both API responses into one clean row
+    row = build_feature_row(config.CITY_NAME, weather, pollution)
 
+    #add the rolling averages the horizon models need
+    rolling_averages = get_recent_rolling_averages()
+    row.update(rolling_averages)
 
-
-
-
-#testing 
-#row = get_live_row()
-#print(row)
-
-
+    return row
 
 
 
@@ -65,13 +82,15 @@ def predict_aqi(row, model, scaler, metadata):
 
 
      prediction = model.predict(x)[0]  #it predicts and loads the first from the list to the prediction
-     return round(prediction, 1)   #converts the decimal value to one place
+     return round(float(prediction), 1)   #converts the decimal value to one place
 
-#testing full pipeline
-model, scaler, metadata = load_model()
+
+#testing full pipeline for all three horizons
 row = get_live_row()
-prediction = predict_aqi(row, model, scaler, metadata)
+
+for horizon_name in ["24h", "48h", "72h"]:
+    model, scaler, metadata = load_model(horizon_name)
+    prediction = predict_aqi(row, model, scaler, metadata)
+    print(f"{horizon_name} ahead prediction: {prediction} (model used: {metadata['best_model']})")
 
 print(f"Live AQI (from current PM2.5): {row['aqi']}")
-print(f"Model prediction: {prediction}")
-print(f"Model used: {metadata['best_model']}")

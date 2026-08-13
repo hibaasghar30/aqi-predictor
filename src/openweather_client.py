@@ -58,16 +58,6 @@ def get_air_pollution(lat,lon):
     response = requests.get(url, params=params)
     return response.json()
 
-#uses geocode function to print long lati of a city
-lat, lon = geocode("Karachi", "PK")
-print(lat, lon)
-#uses get current weather function gives temp in celsius 
-weather = get_current_weather(lat, lon)
-print(weather)
-#uses get air pollution function
-pollution = get_air_pollution(lat, lon)
-print(pollution)
-
 
 def get_air_pollution_history(lat, lon, start, end):
     url = "http://api.openweathermap.org/data/2.5/air_pollution/history"
