@@ -7,7 +7,7 @@ from src.feature_engineering import build_feature_row
 import hopsworks
 from pathlib import Path
 from src.feature_store import get_feature_store
-
+from src.feature_store import save_row
 
 def get_recent_rolling_averages():
     fs = get_feature_store()
@@ -54,6 +54,7 @@ def load_model(horizon_name):
     return model, scaler, metadata
 
 
+
 def get_live_row():
     #converts city name to long lat coordinates
     lat, lon = geocode(config.CITY_NAME, config.COUNTRY_CODE)
@@ -64,12 +65,15 @@ def get_live_row():
     #combines both API responses into one clean row
     row = build_feature_row(config.CITY_NAME, weather, pollution)
 
-    #add the rolling averages the horizon models need
+    #save the raw row first - matches the feature store's actual schema
+    save_row(row)
+
+    #build a separate copy with rolling averages added, just for prediction use
+    prediction_row = row.copy()
     rolling_averages = get_recent_rolling_averages()
-    row.update(rolling_averages)
+    prediction_row.update(rolling_averages)
 
-    return row
-
+    return prediction_row
 
 
 def predict_aqi(row, model, scaler, metadata):
