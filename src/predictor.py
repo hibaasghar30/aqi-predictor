@@ -89,12 +89,61 @@ def predict_aqi(row, model, scaler, metadata):
      return round(float(prediction), 1)   #converts the decimal value to one place
 
 
+
+def check_hazard_alerts(row, predictions):
+    alerts = []
+
+    if row["aqi"] >= config.HAZARD_ALERT_THRESHOLD:
+        alerts.append(f"Current AQI ({row['aqi']}) has reached hazardous levels")
+
+    for horizon_name in ["24h", "48h", "72h"]:
+        value = predictions[horizon_name]["value"]
+        if value >= config.HAZARD_ALERT_THRESHOLD:
+            alerts.append(f"{horizon_name} forecast ({value}) is expected to reach hazardous levels")
+
+    return alerts
+
+
+def log_hazard_alerts(alerts):
+    if not alerts:
+        return
+
+    fs = get_feature_store()
+    fg = fs.get_or_create_feature_group(
+        name="hazard_alerts",
+        version=1,
+        primary_key=["timestamp"],
+        description="Log of triggered AQI hazard alerts",
+        time_travel_format="HUDI",
+    )
+
+    row = {
+        "timestamp": pd.Timestamp.now().isoformat(),
+        "alert_count": len(alerts),
+        "alert_message": " | ".join(alerts),
+    }
+    row_df = pd.DataFrame([row])
+    fg.insert(row_df)
+    print(f"Logged {len(alerts)} hazard alert(s) to Hopsworks.") 
+
+
 #testing full pipeline for all three horizons
 row = get_live_row()
+predictions = {}
 
 for horizon_name in ["24h", "48h", "72h"]:
     model, scaler, metadata = load_model(horizon_name)
     prediction = predict_aqi(row, model, scaler, metadata)
+    predictions[horizon_name] = {"value": prediction, "model_used": metadata["best_model"]}
     print(f"{horizon_name} ahead prediction: {prediction} (model used: {metadata['best_model']})")
 
 print(f"Live AQI (from current PM2.5): {row['aqi']}")
+
+alerts = check_hazard_alerts(row, predictions)
+if alerts:
+    print("\n⚠️  HAZARD ALERTS:")
+    for alert in alerts:
+        print(f"  - {alert}")
+    log_hazard_alerts(alerts)
+else:
+    print("\nNo hazard alerts.")

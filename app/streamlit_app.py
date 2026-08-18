@@ -18,7 +18,7 @@ import matplotlib.pyplot as plt
 import io
 import base64
 
-
+from src.predictor import get_live_row, load_model, predict_aqi, check_hazard_alerts, log_hazard_alerts
 
 
 st.set_page_config(page_title="Karachi AQI Forecast", page_icon="🌫️", layout="wide")
@@ -143,6 +143,13 @@ st.caption("Live air quality monitoring and 3-day forecast")
 with st.spinner("Fetching live data and running predictions..."):
     row, predictions = load_live_prediction()
 
+
+alerts = check_hazard_alerts(row, predictions)
+if alerts:
+    st.error("⚠️ **Hazard Alert**\n\n" + "\n\n".join(alerts))
+    log_hazard_alerts(alerts)
+
+    
 render_aqi_card("Current AQI", row["aqi"], glow_color="#b026ff",number_color="#ff10f0")
 
 st.divider()
