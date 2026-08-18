@@ -115,9 +115,19 @@ def render_shap_chart(horizon_name, model, row, feature_columns):
     plt.close(fig)
 
     st.markdown(f"""
-        <div style="border: 1px solid #ff910066; border-radius: 8px; padding: 12px;
-                    background-color: #ff91000d;">
+        <div style="border: 1px solid #b026ff66; border-radius: 8px; padding: 12px;
+                    background-color: #b026ff0d;">
             <img src="data:image/png;base64,{img_base64}" style="width: 100%;">
+        </div>
+    """, unsafe_allow_html=True)
+
+def render_pollutant_card(label, value):
+    st.markdown(f"""
+        <div style="border: 1px solid #b026ff66; border-radius: 8px; padding: 12px 16px;
+                    background-color: #b026ff0d; margin-bottom: 8px;
+                    box-shadow: 0 0 8px #b026ff33;">
+            <div style="font-size: 13px; color: #888;">{label}</div>
+            <div style="font-size: 24px; font-weight: 600; color: white;">{value}</div>
         </div>
     """, unsafe_allow_html=True)
 
@@ -149,7 +159,7 @@ if alerts:
     st.error("⚠️ **Hazard Alert**\n\n" + "\n\n".join(alerts))
     log_hazard_alerts(alerts)
 
-    
+
 render_aqi_card("Current AQI", row["aqi"], glow_color="#b026ff",number_color="#ff10f0")
 
 st.divider()
@@ -177,17 +187,18 @@ st.subheader("Current Pollutant Levels")
 
 pollutant_col1, pollutant_col2, pollutant_col3 = st.columns(3)
 
+
 with pollutant_col1:
-    st.metric("PM2.5", row["pm2_5"])
-    st.metric("PM10", row["pm10"])
+    render_pollutant_card("PM2.5", row["pm2_5"])
+    render_pollutant_card("PM10", row["pm10"])
 
 with pollutant_col2:
-    st.metric("CO", row["co"])
-    st.metric("NO2", row["no2"])
+    render_pollutant_card("CO", row["co"])
+    render_pollutant_card("NO2", row["no2"])
 
 with pollutant_col3:
-    st.metric("SO2", row["so2"])
-    st.metric("O3", row["o3"])
+    render_pollutant_card("SO2", row["so2"])
+    render_pollutant_card("O3", row["o3"])
 
 
 
