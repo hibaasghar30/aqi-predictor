@@ -51,7 +51,7 @@ AQI_COLORS = [
     (101,150, "Unhealthy for sensitive groups, be a little careful", "#ff7e00"),
     (151,200, "Unhealthy, better to not make plans", "#ff0000"),
     (201,250, "Very unhealthy, stay indoors if you can", "#8f3f97"),
-    (301, 500, "Hazardous, avoid going outside", "#7e0023")
+    (251, 500, "Hazardous, avoid going outside", "#7e0023")
     ]
 
 #function creation

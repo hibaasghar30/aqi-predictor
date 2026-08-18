@@ -11,8 +11,24 @@ from src.feature_store import get_feature_store
 from src.config import get_aqi_category
 
 
-st.set_page_config(page_title="Karachi AQI Forecast", page_icon="🌫️", layout="wide")
+import shap
+import matplotlib.pyplot as plt
 
+#for border
+import io
+import base64
+
+
+
+
+st.set_page_config(page_title="Karachi AQI Forecast", page_icon="🌫️", layout="wide")
+st.markdown("""
+    <style>
+    .stApp { background-color: #000000; }
+    h1, h2, h3 { color: #39ff14 !important; }
+    hr { border-color: #39ff1444 !important; }
+    </style>
+""", unsafe_allow_html=True)
 
 @st.cache_data(ttl=600)  # refresh at most every 10 minutes
 def load_live_prediction():
@@ -22,9 +38,11 @@ def load_live_prediction():
         model, scaler, metadata = load_model(horizon_name)
         prediction = predict_aqi(row, model, scaler, metadata)
         predictions[horizon_name] = {
-            "value": prediction,
-            "model_used": metadata["best_model"],
-        }
+                "value": prediction,
+                "model_used": metadata["best_model"],
+                "model_object": model,
+                "feature_columns": metadata["feature_columns"],
+            }
     return row, predictions
 
 
@@ -41,18 +59,83 @@ def load_recent_history(days=7):
     cutoff = df["timestamp"].max() - timedelta(days=days)
     return df[df["timestamp"] >= cutoff]
 
-def render_aqi_card(label, aqi_value):
-    category_label, color = get_aqi_category(aqi_value)
+
+
+@st.cache_data(ttl=600)
+def compute_shap_values(_model, row, feature_columns):
+    x = pd.DataFrame([row])[feature_columns]
+    explainer = shap.TreeExplainer(_model)
+    shap_values = explainer.shap_values(x)
+    return shap_values[0], x.iloc[0]
+
+
+def render_shap_chart(horizon_name, model, row, feature_columns):
+    shap_values, feature_values = compute_shap_values(model, row, feature_columns)
+
+    impact = list(zip(feature_columns, shap_values))
+    impact.sort(key=lambda pair: abs(pair[1]))
+    top_features = impact[-6:]
+
+    labels = [name for name, value in top_features]
+    values = [value for name, value in top_features]
+    colors = ["#ff4b4b" if v > 0 else "#4b8bff" for v in values]
+
+    plt.style.use("dark_background")
+    fig, ax = plt.subplots(figsize=(6, 3.2))
+    fig.patch.set_alpha(0)
+    ax.set_facecolor("none")
+
+    bars = ax.barh(labels, values, color=colors, height=0.6)
+
+    for bar, value in zip(bars, values):
+        label_x = value + (0.5 if value > 0 else -0.5)
+        align = "left" if value > 0 else "right"
+        ax.text(label_x, bar.get_y() + bar.get_height() / 2, f"{value:.1f}",
+                 va="center", ha=align, fontsize=9, color="white")
+
+    ax.set_xlabel("Impact on prediction", fontsize=9, color="#aaaaaa")
+    ax.set_title(f"Why the {horizon_name} prediction is what it is",
+                 fontsize=11, color="white", pad=10)
+    ax.axvline(0, color="#666666", linewidth=0.8)
+    ax.tick_params(colors="#dddddd", labelsize=9)
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+
+    #fig.tight_layout()
+    #st.markdown('<div style="border: 1px solid #ff910066; border-radius: 8px; padding: 8px; background-color: #ff91000d;">', unsafe_allow_html=True)
+    #st.pyplot(fig, transparent=True)
+    #st.markdown('</div>', unsafe_allow_html=True)
+    #fig.tight_layout()
+
+    
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", transparent=True, dpi=150)
+    buf.seek(0)
+    img_base64 = base64.b64encode(buf.read()).decode()
+    plt.close(fig)
+
     st.markdown(f"""
-        <div style="background-color:{color}22; border-left: 6px solid {color};
-                    padding: 12px 16px; border-radius: 6px; margin-bottom: 8px;">
-            <div style="font-size: 14px; color: #888;">{label}</div>
-            <div style="font-size: 32px; font-weight: 700; color: {color};">{aqi_value}</div>
-            <div style="font-size: 13px; color: #aaa;">{category_label}</div>
+        <div style="border: 1px solid #ff910066; border-radius: 8px; padding: 12px;
+                    background-color: #ff91000d;">
+            <img src="data:image/png;base64,{img_base64}" style="width: 100%;">
         </div>
     """, unsafe_allow_html=True)
 
 
+def render_aqi_card(label, aqi_value, glow_color=None, number_color=None):
+    category_label, severity_color = get_aqi_category(aqi_value)
+    box_color = glow_color if glow_color else severity_color
+    text_color = number_color if number_color else severity_color
+    st.markdown(f"""
+        <div style="background-color:{box_color}22; border: 1px solid {box_color}88;
+                    border-left: 6px solid {severity_color}; padding: 12px 16px;
+                    border-radius: 8px; margin-bottom: 8px;
+                    box-shadow: 0 0 12px {box_color}55;">
+            <div style="font-size: 14px; color: #888;">{label}</div>
+            <div style="font-size: 32px; font-weight: 700; color: {text_color};">{aqi_value}</div>
+            <div style="font-size: 13px; color: #aaa;">{category_label}</div>
+        </div>
+    """, unsafe_allow_html=True)
 
 st.title("🌫️ Karachi AQI Forecast")
 st.caption("Live air quality monitoring and 3-day forecast")
@@ -60,7 +143,7 @@ st.caption("Live air quality monitoring and 3-day forecast")
 with st.spinner("Fetching live data and running predictions..."):
     row, predictions = load_live_prediction()
 
-render_aqi_card("Current AQI", row["aqi"])
+render_aqi_card("Current AQI", row["aqi"], glow_color="#b026ff",number_color="#ff10f0")
 
 st.divider()
 st.subheader("Forecast")
@@ -68,16 +151,20 @@ st.subheader("Forecast")
 col1, col2, col3 = st.columns(3)
 
 with col1:
-    render_aqi_card("24 hours ahead", predictions["24h"]["value"])
+    render_aqi_card("24 hours ahead", predictions["24h"]["value"], glow_color="#b026ff",number_color="#ff10f0")
     st.caption(f"Model: {predictions['24h']['model_used']}")
-
+    render_shap_chart("24h", predictions["24h"]["model_object"], row, predictions["24h"]["feature_columns"])
 with col2:
-    render_aqi_card("48 hours ahead", predictions["48h"]["value"])
+    render_aqi_card("48 hours ahead", predictions["48h"]["value"], glow_color="#b026ff",number_color="#ff10f0")
     st.caption(f"Model: {predictions['48h']['model_used']}")
+    render_shap_chart("48h", predictions["48h"]["model_object"], row, predictions["48h"]["feature_columns"])
 
 with col3:
-    render_aqi_card("72 hours ahead", predictions["72h"]["value"])
+    render_aqi_card("72 hours ahead", predictions["72h"]["value"], glow_color="#b026ff",number_color="#ff10f0")
     st.caption(f"Model: {predictions['72h']['model_used']}")
+    render_shap_chart("72h", predictions["72h"]["model_object"], row, predictions["72h"]["feature_columns"])
+
+
 st.divider()
 st.subheader("Current Pollutant Levels")
 
