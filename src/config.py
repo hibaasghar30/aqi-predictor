@@ -45,21 +45,24 @@ HAZARD_ALERT_THRESHOLD =150  #AQI=>150 gives warning
 
 #AQI SCALE (COLORS)
 #create a list
+#note: upper bound of each range is exclusive (checked with <), so ranges
+#connect with no gaps: 0-50 covers 0 up to just under 51, 51-100 covers
+#51 up to just under 101, and so on.
 AQI_COLORS = [
-    (0,50 , "Good, Have a fun day outside","#00e400"),
-    (51,100, "Moderate, mostly fine to go outside","#ffff00"),
-    (101,150, "Unhealthy for sensitive groups, be a little careful", "#ff7e00"),
-    (151,200, "Unhealthy, better to not make plans", "#ff0000"),
-    (201,250, "Very unhealthy, stay indoors if you can", "#8f3f97"),
-    (251, 500, "Hazardous, avoid going outside", "#7e0023")
+    (0, 51, "Good, Have a fun day outside", "#00e400"),
+    (51, 101, "Moderate, mostly fine to go outside", "#ffff00"),
+    (101, 151, "Unhealthy for sensitive groups, be a little careful", "#ff7e00"),
+    (151, 201, "Unhealthy, better to not make plans", "#ff0000"),
+    (201, 251, "Very unhealthy, stay indoors if you can", "#8f3f97"),
+    (251, 501, "Hazardous, avoid going outside", "#7e0023")
     ]
 
 #function creation
 
 def get_aqi_category(aqi_value):
     for low, high, label, color in AQI_COLORS:
-        if low <= aqi_value <= high:
-         return label, color
+        if low <= aqi_value < high:
+            return label, color
     return "Hazardous, avoid going outside", "#7e0023" 
 
 

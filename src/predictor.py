@@ -127,23 +127,3 @@ def log_hazard_alerts(alerts):
     print(f"Logged {len(alerts)} hazard alert(s) to Hopsworks.") 
 
 
-#testing full pipeline for all three horizons
-row = get_live_row()
-predictions = {}
-
-for horizon_name in ["24h", "48h", "72h"]:
-    model, scaler, metadata = load_model(horizon_name)
-    prediction = predict_aqi(row, model, scaler, metadata)
-    predictions[horizon_name] = {"value": prediction, "model_used": metadata["best_model"]}
-    print(f"{horizon_name} ahead prediction: {prediction} (model used: {metadata['best_model']})")
-
-print(f"Live AQI (from current PM2.5): {row['aqi']}")
-
-alerts = check_hazard_alerts(row, predictions)
-if alerts:
-    print("\n⚠️  HAZARD ALERTS:")
-    for alert in alerts:
-        print(f"  - {alert}")
-    log_hazard_alerts(alerts)
-else:
-    print("\nNo hazard alerts.")

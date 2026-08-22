@@ -21,6 +21,11 @@ import base64
 from src.predictor import get_live_row, load_model, predict_aqi, check_hazard_alerts, log_hazard_alerts
 
 
+#for the page hting
+if "view" not in st.session_state:
+    st.session_state.view = "main"
+
+
 st.set_page_config(page_title="Karachi AQI Forecast", page_icon="🌫️", layout="wide")
 st.markdown("""
     <style>
@@ -59,6 +64,28 @@ def load_recent_history(days=7):
     cutoff = df["timestamp"].max() - timedelta(days=days)
     return df[df["timestamp"] >= cutoff]
 
+
+@st.cache_data(ttl=3600)
+def load_yearly_trend():
+    fs = get_feature_store()
+    fg = fs.get_or_create_feature_group(
+        name="aqi_features", version=1, primary_key=["city", "timestamp"],
+        description="AQI and weather features for Karachi", time_travel_format="HUDI",
+    )
+    df = fg.read()
+    df["timestamp"] = pd.to_datetime(df["timestamp"], format="mixed")
+    df = df.sort_values("timestamp")
+
+    df["year"] = df["timestamp"].dt.year
+    df["month_sort"] = df["timestamp"].dt.to_period("M")
+    df["month"] = df["timestamp"].dt.strftime("%b")
+
+    monthly_avg = df.groupby(["year", "month_sort", "month"])["aqi"].mean().reset_index()
+    monthly_avg = monthly_avg.sort_values("month_sort")
+    monthly_avg = monthly_avg[["year", "month", "aqi"]]
+    monthly_avg.columns = ["year", "month", "avg_aqi"]
+
+    return monthly_avg
 
 
 @st.cache_data(ttl=600)
@@ -101,13 +128,6 @@ def render_shap_chart(horizon_name, model, row, feature_columns):
     for spine in ax.spines.values():
         spine.set_visible(False)
 
-    #fig.tight_layout()
-    #st.markdown('<div style="border: 1px solid #ff910066; border-radius: 8px; padding: 8px; background-color: #ff91000d;">', unsafe_allow_html=True)
-    #st.pyplot(fig, transparent=True)
-    #st.markdown('</div>', unsafe_allow_html=True)
-    #fig.tight_layout()
-
-    
     buf = io.BytesIO()
     fig.savefig(buf, format="png", transparent=True, dpi=150)
     buf.seek(0)
@@ -120,6 +140,7 @@ def render_shap_chart(horizon_name, model, row, feature_columns):
             <img src="data:image/png;base64,{img_base64}" style="width: 100%;">
         </div>
     """, unsafe_allow_html=True)
+
 
 def render_pollutant_card(label, value):
     st.markdown(f"""
@@ -139,7 +160,7 @@ def render_aqi_card(label, aqi_value, glow_color=None, number_color=None):
     st.markdown(f"""
         <div style="background-color:{box_color}22; border: 1px solid {box_color}88;
                     border-left: 6px solid {severity_color}; padding: 12px 16px;
-                    border-radius: 8px; margin-bottom: 8px;
+                    border-radius: 8px; margin-bottom: 8px ; min-height: 170px;;
                     box-shadow: 0 0 12px {box_color}55;">
             <div style="font-size: 14px; color: #888;">{label}</div>
             <div style="font-size: 32px; font-weight: 700; color: {text_color};">{aqi_value}</div>
@@ -147,77 +168,206 @@ def render_aqi_card(label, aqi_value, glow_color=None, number_color=None):
         </div>
     """, unsafe_allow_html=True)
 
-st.title("🌫️ Karachi AQI Forecast")
-st.caption("Live air quality monitoring and 3-day forecast")
-
-with st.spinner("Fetching live data and running predictions..."):
-    row, predictions = load_live_prediction()
 
 
-alerts = check_hazard_alerts(row, predictions)
-if alerts:
-    st.error("⚠️ **Hazard Alert**\n\n" + "\n\n".join(alerts))
-    log_hazard_alerts(alerts)
+def get_health_advice(category_label):
+    advice_map = {
+        "Good, Have a fun day outside": "Air quality is good — safe for all outdoor activities.",
+        "Moderate, mostly fine to go outside": "Acceptable for most people. Sensitive groups (asthma, elderly, children) should limit prolonged outdoor exertion.",
+        "Unhealthy for sensitive groups, be a little careful": "Sensitive groups should reduce outdoor activity. Consider a mask if you have respiratory issues.",
+        "Unhealthy, better to not make plans": "Everyone should limit outdoor exertion. Wear a mask (N95) if going outside.",
+        "Very unhealthy, stay indoors if you can": "Avoid outdoor activity. Keep windows closed. Use an air purifier indoors if available.",
+        "Hazardous, avoid going outside": "Stay indoors. Avoid all outdoor exertion. Keep windows closed and use an air purifier if available.",
+    }
+    return advice_map.get(category_label, "No specific guidance available for this air quality level.")
 
 
-render_aqi_card("Current AQI", row["aqi"], glow_color="#b026ff",number_color="#ff10f0")
-
-st.divider()
-st.subheader("Forecast")
-
-col1, col2, col3 = st.columns(3)
-
-with col1:
-    render_aqi_card("24 hours ahead", predictions["24h"]["value"], glow_color="#b026ff",number_color="#ff10f0")
-    st.caption(f"Model: {predictions['24h']['model_used']}")
-    render_shap_chart("24h", predictions["24h"]["model_object"], row, predictions["24h"]["feature_columns"])
-with col2:
-    render_aqi_card("48 hours ahead", predictions["48h"]["value"], glow_color="#b026ff",number_color="#ff10f0")
-    st.caption(f"Model: {predictions['48h']['model_used']}")
-    render_shap_chart("48h", predictions["48h"]["model_object"], row, predictions["48h"]["feature_columns"])
-
-with col3:
-    render_aqi_card("72 hours ahead", predictions["72h"]["value"], glow_color="#b026ff",number_color="#ff10f0")
-    st.caption(f"Model: {predictions['72h']['model_used']}")
-    render_shap_chart("72h", predictions["72h"]["model_object"], row, predictions["72h"]["feature_columns"])
+def render_health_card(aqi_value):
+    category_label, severity_color = get_aqi_category(aqi_value)
+    advice = get_health_advice(category_label)
+    st.markdown(f"""
+        <div style="border: 1px solid {severity_color}88; border-left: 6px solid {severity_color};
+                    border-radius: 8px; padding: 12px 16px; background-color: {severity_color}11;
+                    margin-bottom: 8px; min-height: 170px;">
+            <div style="font-size: 13px; color: #888;">Health Guidance</div>
+            <div style="font-size: 15px; color: white; margin-top: 4px;">{advice}</div>
+        </div>
+    """, unsafe_allow_html=True)
 
 
-st.divider()
-st.subheader("Current Pollutant Levels")
+def render_best_time_card(current_aqi, predictions):
+    options = [
+        ("Now", current_aqi),
+        ("In 24 hours", predictions["24h"]["value"]),
+        ("In 48 hours", predictions["48h"]["value"]),
+        ("In 72 hours", predictions["72h"]["value"]),
+    ]
 
-pollutant_col1, pollutant_col2, pollutant_col3 = st.columns(3)
+    best_label, best_value = min(options, key=lambda pair: pair[1])
+    category_label, severity_color = get_aqi_category(best_value)
+
+    st.markdown(f"""
+        <div style="border: 1px solid {severity_color}88; border-left: 6px solid {severity_color};
+                    border-radius: 8px; padding: 12px 16px; background-color: {severity_color}11;
+                    margin-bottom: 8px; min-height: 170px;">
+            <div style="font-size: 13px; color: #888;">Best Time for Outdoor Activity</div>
+            <div style="font-size: 18px; color: white; margin-top: 4px; font-weight: 600;">{best_label}</div>
+            <div style="font-size: 13px; color: #aaa;">Predicted AQI: {best_value:.1f} ({category_label.split(',')[0]})</div>
+        </div>
+    """, unsafe_allow_html=True)
+
+def render_weather_metric_card(label, value):
+    st.markdown(f"""
+        <div style="background-color:#b026ff22; border: 1px solid #b026ff88;
+                    border-left: 6px solid #b026ff; padding: 12px 16px;
+                    border-radius: 8px; margin-bottom: 8px;
+                    box-shadow: 0 0 12px #b026ff55;">
+            <div style="font-size: 14px; color: #888;">{label}</div>
+            <div style="font-size: 32px; font-weight: 700; color: #ff10f0;">{value}</div>
+        </div>
+    """, unsafe_allow_html=True)
 
 
-with pollutant_col1:
-    render_pollutant_card("PM2.5", row["pm2_5"])
-    render_pollutant_card("PM10", row["pm10"])
+def render_weather_card(row):
+    st.subheader("Current Weather")
+    weather_col1, weather_col2, weather_col3 = st.columns(3)
 
-with pollutant_col2:
-    render_pollutant_card("CO", row["co"])
-    render_pollutant_card("NO2", row["no2"])
-
-with pollutant_col3:
-    render_pollutant_card("SO2", row["so2"])
-    render_pollutant_card("O3", row["o3"])
-
+    with weather_col1:
+        render_weather_metric_card("Temperature", f"{row['temperature']}°C")
+    with weather_col2:
+        render_weather_metric_card("Humidity", f"{row['humidity']}%")
+    with weather_col3:
+        render_weather_metric_card("Wind Speed", f"{row['wind_speed']} m/s")
 
 
-st.divider()
-st.subheader("Recent Trend & Forecast")
 
-history_df = load_recent_history(days=7)
+def render_monthly_bar_chart(data, title):
+    colors = [get_aqi_category(v)[1] for v in data["avg_aqi"]]
 
-chart_df = history_df[["timestamp", "aqi"]].copy()
-chart_df["type"] = "Historical"
+    fig, ax = plt.subplots(figsize=(8, 3))
+    plt.style.use("dark_background")
+    fig.patch.set_alpha(0)
+    ax.set_facecolor("none")
 
-last_time = history_df["timestamp"].max()
-forecast_rows = pd.DataFrame([
-    {"timestamp": last_time + timedelta(hours=24), "aqi": predictions["24h"]["value"], "type": "Forecast"},
-    {"timestamp": last_time + timedelta(hours=48), "aqi": predictions["48h"]["value"], "type": "Forecast"},
-    {"timestamp": last_time + timedelta(hours=72), "aqi": predictions["72h"]["value"], "type": "Forecast"},
-])
+    ax.bar(data["month"], data["avg_aqi"], color=colors)
 
-chart_df = pd.concat([chart_df, forecast_rows], ignore_index=True)
-chart_df = chart_df.set_index("timestamp")
+    ax.set_ylabel("Average AQI", color="#aaaaaa")
+    ax.set_title(title, color="white", fontsize=13)
+    ax.tick_params(colors="#dddddd", labelsize=8, rotation=45)
+    for spine in ax.spines.values():
+        spine.set_visible(False)
 
-st.line_chart(chart_df, y="aqi", color="type")
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", transparent=True, dpi=150, bbox_inches="tight")
+    buf.seek(0)
+    img_base64 = base64.b64encode(buf.read()).decode()
+    plt.close(fig)
+
+    st.markdown(f"""
+    <div style="border: 1px solid #b026ff66; border-radius: 8px; padding: 12px;
+                background-color: #b026ff0d; max-width: 600px; margin: 0 auto;">
+        <img src="data:image/png;base64,{img_base64}" style="width: 100%;">
+    </div>
+""", unsafe_allow_html=True)
+
+
+if st.session_state.view == "main":
+    st.title("🌫️ Karachi AQI Forecast")
+
+    if st.button("📅 Show AQI Monthly Trend"):
+        st.session_state.view = "yearly_chart"
+        st.rerun()
+
+    st.caption("Live air quality monitoring and 3-day forecast")
+
+    with st.spinner("Fetching live data and running predictions..."):
+        row, predictions = load_live_prediction()
+
+    alerts = check_hazard_alerts(row, predictions)
+    if alerts:
+        st.error("⚠️ **Hazard Alert**\n\n" + "\n\n".join(alerts))
+        log_hazard_alerts(alerts)
+
+    
+
+
+    aqi_col1, aqi_col2, aqi_col3 = st.columns(3)
+
+    with aqi_col1:
+        render_aqi_card("Current AQI", row["aqi"], glow_color="#b026ff", number_color="#ff10f0")
+    with aqi_col2:
+        render_health_card(row["aqi"])
+    with aqi_col3:
+        render_best_time_card(row["aqi"], predictions)
+
+
+    render_weather_card(row)
+
+    st.divider()
+    st.subheader("Forecast")
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        render_aqi_card("24 hours ahead", predictions["24h"]["value"], glow_color="#b026ff", number_color="#ff10f0")
+        st.caption(f"Model: {predictions['24h']['model_used']}")
+        render_shap_chart("24h", predictions["24h"]["model_object"], row, predictions["24h"]["feature_columns"])
+    with col2:
+        render_aqi_card("48 hours ahead", predictions["48h"]["value"], glow_color="#b026ff", number_color="#ff10f0")
+        st.caption(f"Model: {predictions['48h']['model_used']}")
+        render_shap_chart("48h", predictions["48h"]["model_object"], row, predictions["48h"]["feature_columns"])
+    with col3:
+        render_aqi_card("72 hours ahead", predictions["72h"]["value"], glow_color="#b026ff", number_color="#ff10f0")
+        st.caption(f"Model: {predictions['72h']['model_used']}")
+        render_shap_chart("72h", predictions["72h"]["model_object"], row, predictions["72h"]["feature_columns"])
+
+    st.divider()
+    st.subheader("Current Pollutant Levels")
+
+    pollutant_col1, pollutant_col2, pollutant_col3 = st.columns(3)
+
+    with pollutant_col1:
+        render_pollutant_card("PM2.5", row["pm2_5"])
+        render_pollutant_card("PM10", row["pm10"])
+
+    with pollutant_col2:
+        render_pollutant_card("CO", row["co"])
+        render_pollutant_card("NO2", row["no2"])
+
+    with pollutant_col3:
+        render_pollutant_card("SO2", row["so2"])
+        render_pollutant_card("O3", row["o3"])
+
+    st.divider()
+    st.subheader("Recent Trend & Forecast")
+
+    history_df = load_recent_history(days=7)
+
+    chart_df = history_df[["timestamp", "aqi"]].copy()
+    chart_df["type"] = "Historical"
+
+    last_time = history_df["timestamp"].max()
+    forecast_rows = pd.DataFrame([
+        {"timestamp": last_time + timedelta(hours=24), "aqi": predictions["24h"]["value"], "type": "Forecast"},
+        {"timestamp": last_time + timedelta(hours=48), "aqi": predictions["48h"]["value"], "type": "Forecast"},
+        {"timestamp": last_time + timedelta(hours=72), "aqi": predictions["72h"]["value"], "type": "Forecast"},
+    ])
+
+    chart_df = pd.concat([chart_df, forecast_rows], ignore_index=True)
+    chart_df = chart_df.set_index("timestamp")
+
+    st.line_chart(chart_df, y="aqi", color="type")
+
+
+elif st.session_state.view == "yearly_chart":
+    if st.button("⬅ Back"):
+        st.session_state.view = "main"
+        st.rerun()
+
+    monthly_avg = load_yearly_trend()
+
+    available_years = sorted(monthly_avg["year"].unique(), reverse=True)
+    selected_year = st.selectbox("Select year", available_years)
+
+    year_data = monthly_avg[monthly_avg["year"] == selected_year]
+    render_monthly_bar_chart(year_data, f"AQI Monthly Trend — {selected_year}")
