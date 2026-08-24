@@ -114,8 +114,11 @@ def render_shap_chart(horizon_name, model, row, feature_columns):
 
     bars = ax.barh(labels, values, color=colors, height=0.6)
 
+    value_range = max(values) - min(values)
+    offset = value_range * 0.04
+
     for bar, value in zip(bars, values):
-        label_x = value + (0.5 if value > 0 else -0.5)
+        label_x = value + (offset if value > 0 else -offset)
         align = "left" if value > 0 else "right"
         ax.text(label_x, bar.get_y() + bar.get_height() / 2, f"{value:.1f}",
                  va="center", ha=align, fontsize=9, color="white")
@@ -124,9 +127,11 @@ def render_shap_chart(horizon_name, model, row, feature_columns):
     ax.set_title(f"Why the {horizon_name} prediction is what it is",
                  fontsize=11, color="white", pad=10)
     ax.axvline(0, color="#666666", linewidth=0.8)
-    ax.tick_params(colors="#dddddd", labelsize=9)
+    ax.tick_params(colors="#dddddd", labelsize=9, pad=8)
     for spine in ax.spines.values():
         spine.set_visible(False)
+
+    fig.subplots_adjust(left=0.28)
 
     buf = io.BytesIO()
     fig.savefig(buf, format="png", transparent=True, dpi=150)
@@ -140,7 +145,6 @@ def render_shap_chart(horizon_name, model, row, feature_columns):
             <img src="data:image/png;base64,{img_base64}" style="width: 100%;">
         </div>
     """, unsafe_allow_html=True)
-
 
 def render_pollutant_card(label, value):
     st.markdown(f"""
