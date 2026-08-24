@@ -271,13 +271,58 @@ def render_monthly_bar_chart(data, title):
 """, unsafe_allow_html=True)
 
 
+
+
+#adds the pollutant bar chart 
+def render_pollutant_comparison_chart(row):
+    pollutants = ["pm2_5", "pm10", "co", "no2", "so2", "o3"]
+    labels = ["PM2.5", "PM10", "CO", "NO2", "SO2", "O3"]
+    values = [row[p] for p in pollutants]
+
+    bar_colors = ["#ff10f0", "#b026ff", "#00e4ff", "#39ff14", "#ffff00", "#ff7e00"]
+
+    fig, ax = plt.subplots(figsize=(8, 4))
+    plt.style.use("dark_background")
+    fig.patch.set_alpha(0)
+    ax.set_facecolor("none")
+
+    ax.bar(labels, values, color=bar_colors)
+
+    ax.set_ylabel("Concentration", color="#aaaaaa")
+    ax.set_title("Current Pollutant Comparison", color="white", fontsize=13)
+    ax.tick_params(colors="#dddddd", labelsize=10)
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", transparent=True, dpi=150, bbox_inches="tight")
+    buf.seek(0)
+    img_base64 = base64.b64encode(buf.read()).decode()
+    plt.close(fig)
+
+    st.markdown(f"""
+    <div style="border: 1px solid #b026ff66; border-radius: 8px; padding: 12px;
+                background-color: #b026ff0d; max-width: 600px; margin: 0 auto;">
+        <img src="data:image/png;base64,{img_base64}" style="width: 100%;">
+    </div>
+""", unsafe_allow_html=True)
+
+
+
+
 if st.session_state.view == "main":
     st.title("🌫️ Karachi AQI Forecast")
 
-    if st.button("📅 Show AQI Monthly Trend"):
-        st.session_state.view = "yearly_chart"
-        st.rerun()
-
+#adds the button of pollutants
+    button_col1, button_col2, button_spacer = st.columns([1, 1, 4])
+    with button_col1:
+        if st.button("📅 Show AQI Monthly Trend"):
+            st.session_state.view = "yearly_chart"
+            st.rerun()
+    with button_col2:
+        if st.button("🧪 Show Pollutant Comparison"):
+            st.session_state.view = "pollutant_chart"
+            st.rerun()
     st.caption("Live air quality monitoring and 3-day forecast")
 
     with st.spinner("Fetching live data and running predictions..."):
@@ -371,3 +416,13 @@ elif st.session_state.view == "yearly_chart":
 
     year_data = monthly_avg[monthly_avg["year"] == selected_year]
     render_monthly_bar_chart(year_data, f"AQI Monthly Trend — {selected_year}")
+
+elif st.session_state.view == "pollutant_chart":
+    if st.button("⬅ Back"):
+        st.session_state.view = "main"
+        st.rerun()
+
+    with st.spinner("Fetching live data..."):
+        row, predictions = load_live_prediction()
+
+    render_pollutant_comparison_chart(row)

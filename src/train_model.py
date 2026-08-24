@@ -153,6 +153,7 @@ def train_one_horizon(df, horizon_name, target_column):
         "needs_scaler": needs_scaler,
         "feature_columns": feature_columns,
     }
+
     with open(metadata_file, "w") as f:
         json.dump(metadata, f)
 
@@ -163,6 +164,7 @@ def train_one_horizon(df, horizon_name, target_column):
         project=config.HOPSWORKS_PROJECT_NAME,
     )
     mr = project.get_model_registry()
+
 
     hw_model = mr.python.create_model(
         name=f"aqi_best_model_{horizon_name}",
