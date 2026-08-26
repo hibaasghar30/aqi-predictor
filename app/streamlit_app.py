@@ -27,13 +27,29 @@ if "view" not in st.session_state:
 
 
 st.set_page_config(page_title="Karachi AQI Forecast", page_icon="🌫️", layout="wide")
+#st.markdown("""
+ #   <style>
+  #  .stApp { background-color: #000000; }
+   # h1, h2, h3 { color: #39ff14 !important; }
+    #hr { border-color: #39ff1444 !important; }
+    #</style>
+#""", unsafe_allow_html=True)
+
+
 st.markdown("""
     <style>
     .stApp { background-color: #000000; }
     h1, h2, h3 { color: #39ff14 !important; }
     hr { border-color: #39ff1444 !important; }
+
+    @media (max-width: 640px) {
+        div[data-testid="stVerticalBlock"] > div[data-testid="stVerticalBlockBorderWrapper"] {
+            margin-bottom: 16px;
+        }
+    }
     </style>
 """, unsafe_allow_html=True)
+
 
 @st.cache_data(ttl=600)  # refresh at most every 10 minutes
 def load_live_prediction():
@@ -143,16 +159,22 @@ def render_shap_chart(horizon_name, model, row, feature_columns):
     img_base64 = base64.b64encode(buf.read()).decode()
     plt.close(fig)
 
+    #st.markdown(f"""
+     #   <div style="border: 1px solid #b026ff66; border-radius: 8px; padding: 12px;
+      #              background-color: #b026ff0d;">
+
     st.markdown(f"""
         <div style="border: 1px solid #b026ff66; border-radius: 8px; padding: 12px;
-                    background-color: #b026ff0d;">
+                    background-color: #b026ff0d; margin-bottom: 20px;">
             <img src="data:image/png;base64,{img_base64}" style="width: 100%;">
         </div>
     """, unsafe_allow_html=True)
+
+
 def render_pollutant_card(label, value):
     st.markdown(f"""
         <div style="border: 1px solid #b026ff66; border-radius: 8px; padding: 12px 16px;
-                    background-color: #b026ff0d; margin-bottom: 8px;
+                    background-color: #b026ff0d; margin-bottom: 20px;
                     box-shadow: 0 0 8px #b026ff33;">
             <div style="font-size: 13px; color: #888;">{label}</div>
             <div style="font-size: 24px; font-weight: 600; color: white;">{value}</div>
@@ -167,7 +189,7 @@ def render_aqi_card(label, aqi_value, glow_color=None, number_color=None):
     st.markdown(f"""
         <div style="background-color:{box_color}22; border: 1px solid {box_color}88;
                     border-left: 6px solid {severity_color}; padding: 12px 16px;
-                    border-radius: 8px; margin-bottom: 8px ; min-height: 170px;;
+                    border-radius: 8px; margin-bottom: 20px;min-height: 170px;;
                     box-shadow: 0 0 12px {box_color}55;">
             <div style="font-size: 14px; color: #888;">{label}</div>
             <div style="font-size: 32px; font-weight: 700; color: {text_color};">{aqi_value}</div>
@@ -195,7 +217,7 @@ def render_health_card(aqi_value):
     st.markdown(f"""
         <div style="border: 1px solid {severity_color}88; border-left: 6px solid {severity_color};
                     border-radius: 8px; padding: 12px 16px; background-color: {severity_color}11;
-                    margin-bottom: 8px; min-height: 170px;">
+                    margin-bottom: 20px; min-height: 170px;">
             <div style="font-size: 13px; color: #888;">Health Guidance</div>
             <div style="font-size: 15px; color: white; margin-top: 4px;">{advice}</div>
         </div>
@@ -216,7 +238,7 @@ def render_best_time_card(current_aqi, predictions):
     st.markdown(f"""
         <div style="border: 1px solid {severity_color}88; border-left: 6px solid {severity_color};
                     border-radius: 8px; padding: 12px 16px; background-color: {severity_color}11;
-                    margin-bottom: 8px; min-height: 170px;">
+                    margin-bottom: 20px; min-height: 170px;">
             <div style="font-size: 13px; color: #888;">Best Time for Outdoor Activity</div>
             <div style="font-size: 18px; color: white; margin-top: 4px; font-weight: 600;">{best_label}</div>
             <div style="font-size: 13px; color: #aaa;">Predicted AQI: {best_value:.1f} ({category_label.split(',')[0]})</div>
