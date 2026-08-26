@@ -96,6 +96,7 @@ def compute_shap_values(_model, row, feature_columns):
     return shap_values[0], x.iloc[0]
 
 
+
 def render_shap_chart(horizon_name, model, row, feature_columns):
     shap_values, feature_values = compute_shap_values(model, row, feature_columns)
 
@@ -115,7 +116,10 @@ def render_shap_chart(horizon_name, model, row, feature_columns):
     bars = ax.barh(labels, values, color=colors, height=0.6)
 
     value_range = max(values) - min(values)
-    offset = value_range * 0.04
+    offset = value_range * 0.08
+
+    # widen the x-axis so offset text has room and doesn't collide with tick labels
+    ax.set_xlim(min(values) - value_range * 0.25, max(values) + value_range * 0.25)
 
     for bar, value in zip(bars, values):
         label_x = value + (offset if value > 0 else -offset)
@@ -145,7 +149,6 @@ def render_shap_chart(horizon_name, model, row, feature_columns):
             <img src="data:image/png;base64,{img_base64}" style="width: 100%;">
         </div>
     """, unsafe_allow_html=True)
-
 def render_pollutant_card(label, value):
     st.markdown(f"""
         <div style="border: 1px solid #b026ff66; border-radius: 8px; padding: 12px 16px;
