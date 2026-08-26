@@ -249,7 +249,7 @@ def render_weather_metric_card(label, value):
     st.markdown(f"""
         <div style="background-color:#b026ff22; border: 1px solid #b026ff88;
                     border-left: 6px solid #b026ff; padding: 12px 16px;
-                    border-radius: 8px; margin-bottom: 8px;
+                    border-radius: 8px; margin-bottom: 20px;
                     box-shadow: 0 0 12px #b026ff55;">
             <div style="font-size: 14px; color: #888;">{label}</div>
             <div style="font-size: 32px; font-weight: 700; color: #ff10f0;">{value}</div>
