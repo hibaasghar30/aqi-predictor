@@ -1,13 +1,9 @@
 name: AQI Daily Pipeline
 
 on:
-  # Pipeline paused temporarily because Hopsworks free-tier
-  # compute budget has been exhausted.
-  # Restore the schedules once the budget resets or a new plan is available.
-  #
-  # - cron: "0 * * * *"    # every hour - feature pipeline / prediction
-  # - cron: "0 6 * * *"    # once daily at 6 AM - training + drift check
-
+  schedule:
+    - cron: "0 * * * *"    # every hour - feature pipeline / prediction
+    - cron: "0 6 * * *"    # once daily at 6 AM - training + drift check
   workflow_dispatch:
 
 jobs:
@@ -27,13 +23,6 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Run feature pipeline and prediction
- 
-      # Feature pipeline and prediction is currently paused because the Hopsworks
-      # free-tier compute budget has been exhausted.
-        if: github.event_name == 'workflow_dispatch'
-        # Original condition kept for reference.
-        # Automatic schedule is currently paused due to Hopsworks
-        # free-tier compute budget being exhausted.
         env:
           OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY }}
           HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
@@ -41,11 +30,6 @@ jobs:
         run: python -m src.predictor
 
       - name: Run training pipeline
-        # Training is currently paused because the Hopsworks free-tier
-        # compute budget has been exhausted.
-        # Restore the scheduled condition when the budget resets
-        # or a new Hopsworks plan/account is available.
-        if: github.event_name == 'workflow_dispatch'
         env:
           OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY }}
           HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
@@ -53,11 +37,6 @@ jobs:
         run: python -m src.train_model
 
       - name: Run data drift check
-        # Drift check is currently paused because the Hopsworks
-        # free-tier compute budget has been exhausted.
-        # Restore the scheduled condition when the budget resets
-        # or a new Hopsworks plan/account is available.
-        if: github.event_name == 'workflow_dispatch'
         env:
           OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY }}
           HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
