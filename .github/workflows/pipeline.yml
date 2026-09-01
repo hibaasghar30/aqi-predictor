@@ -1,17 +1,19 @@
 name: AQI Daily Pipeline
 
 on:
-  schedule:
-    - cron: "0 * * * *"    # every hour - feature pipeline / prediction
-    # Paused due to Hopsworks free-tier compute budget being exhausted.
-    # See README/report for details. Uncomment the line below once the
-    # budget resets or a new plan is in place:
-    # - cron: "0 6 * * *"    # once daily at 6 AM - training + drift check
+  # Pipeline paused temporarily because Hopsworks free-tier
+  # compute budget has been exhausted.
+  # Restore the schedules once the budget resets or a new plan is available.
+  #
+  # - cron: "0 * * * *"    # every hour - feature pipeline / prediction
+  # - cron: "0 6 * * *"    # once daily at 6 AM - training + drift check
+
   workflow_dispatch:
 
 jobs:
   run-pipeline:
     runs-on: ubuntu-latest
+
     steps:
       - name: Check out repo
         uses: actions/checkout@v4
@@ -24,12 +26,14 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-
       - name: Run feature pipeline and prediction
-        if: github.event.schedule == '0 * * * *' || github.event_name == 'workflow_dispatch'
-        # Original condition (kept for reference, paused since the daily
-        # cron trigger above is commented out):
-        # if: github.event.schedule == '0 * * * *' || github.event.schedule == '0 6 * * *' || github.event_name == 'workflow_dispatch'
+ 
+      # Feature pipeline and prediction is currently paused because the Hopsworks
+      # free-tier compute budget has been exhausted.
+        if: github.event_name == 'workflow_dispatch'
+        # Original condition kept for reference.
+        # Automatic schedule is currently paused due to Hopsworks
+        # free-tier compute budget being exhausted.
         env:
           OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY }}
           HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
@@ -37,10 +41,10 @@ jobs:
         run: python -m src.predictor
 
       - name: Run training pipeline
-        # Paused due to Hopsworks free-tier compute budget being exhausted.
-        # Only runs on manual trigger for now. Restore the original condition
-        # below once the budget resets or a new plan is in place:
-        # if: github.event.schedule == '0 6 * * *' || github.event_name == 'workflow_dispatch'
+        # Training is currently paused because the Hopsworks free-tier
+        # compute budget has been exhausted.
+        # Restore the scheduled condition when the budget resets
+        # or a new Hopsworks plan/account is available.
         if: github.event_name == 'workflow_dispatch'
         env:
           OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY }}
@@ -49,10 +53,10 @@ jobs:
         run: python -m src.train_model
 
       - name: Run data drift check
-        # Paused due to Hopsworks free-tier compute budget being exhausted.
-        # Only runs on manual trigger for now. Restore the original condition
-        # below once the budget resets or a new plan is in place:
-        # if: github.event.schedule == '0 6 * * *' || github.event_name == 'workflow_dispatch'
+        # Drift check is currently paused because the Hopsworks
+        # free-tier compute budget has been exhausted.
+        # Restore the scheduled condition when the budget resets
+        # or a new Hopsworks plan/account is available.
         if: github.event_name == 'workflow_dispatch'
         env:
           OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY }}
