@@ -3,7 +3,10 @@ name: AQI Daily Pipeline
 on:
   schedule:
     - cron: "0 * * * *"    # every hour - feature pipeline / prediction
-    - cron: "0 6 * * *"    # once daily at 6 AM - training + drift check
+    # Daily 6 AM training + drift check is paused due to Hopsworks free-tier
+    # compute budget being exhausted. See final report (Section 9.2) for details.
+    # Re-enable this line once the budget resets or a paid plan is adopted:
+    # - cron: "0 6 * * *"
   workflow_dispatch:
 
 jobs:
@@ -23,6 +26,7 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Run feature pipeline and prediction
+        if: github.event.schedule == '0 * * * *' || github.event_name == 'workflow_dispatch'
         env:
           OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY }}
           HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
@@ -30,6 +34,9 @@ jobs:
         run: python -m src.predictor
 
       - name: Run training pipeline
+        # Paused: only runs on manual trigger now, until the Hopsworks
+        # compute budget resets.
+        if: github.event_name == 'workflow_dispatch'
         env:
           OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY }}
           HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
@@ -37,6 +44,9 @@ jobs:
         run: python -m src.train_model
 
       - name: Run data drift check
+        # Paused: only runs on manual trigger now, until the Hopsworks
+        # compute budget resets.
+        if: github.event_name == 'workflow_dispatch'
         env:
           OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY }}
           HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
