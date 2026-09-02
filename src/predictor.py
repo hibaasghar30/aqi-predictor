@@ -28,32 +28,86 @@ def get_recent_rolling_averages():
     }
 
 
-def load_model(horizon_name):
+#def load_model(horizon_name):
     # log in to Hopsworks so we can reach the Model Registry
-    project = hopsworks.login(
-        api_key_value=config.HOPSWORKS_API_KEY,
-        project=config.HOPSWORKS_PROJECT_NAME,
-    )
-    mr = project.get_model_registry()
+ #   project = hopsworks.login(
+  #      api_key_value=config.HOPSWORKS_API_KEY,
+   #     project=config.HOPSWORKS_PROJECT_NAME,
+    #)
+    #mr = project.get_model_registry()
 
     # ask the registry for this horizon's best model by name
-    hw_model = mr.get_best_model(name=f"aqi_best_model_{horizon_name}", metric="rmse", direction="min")
+    #hw_model = mr.get_best_model(name=f"aqi_best_model_{horizon_name}", metric="rmse", direction="min")
 
     # download() pulls that model's files into a temp folder and returns the path to it
-    download_dir = Path(hw_model.download())
+    #download_dir = Path(hw_model.download())
 
-    model = joblib.load(download_dir / "best_model.joblib")
+    #model = joblib.load(download_dir / "best_model.joblib")
 
-    with open(download_dir / "model_metadata.json", "r") as f:
-        metadata = json.load(f)
+    #with open(download_dir / "model_metadata.json", "r") as f:
+    #    metadata = json.load(f)
 
-    scaler = None
-    if metadata.get("needs_scaler"):
-        scaler = joblib.load(download_dir / "scaler.joblib")
+    #scaler = None
+    #if metadata.get("needs_scaler"):
+     #   scaler = joblib.load(download_dir / "scaler.joblib")
 
-    return model, scaler, metadata
+    #return model, scaler, metadata
 
 
+
+
+
+def load_model(horizon_name):
+    # First try to load the model from Hopsworks.
+    # If Hopsworks is unavailable or the downloaded model cannot be loaded,
+    # fall back to the healthy local model files.
+
+    try:
+        project = hopsworks.login(
+            api_key_value=config.HOPSWORKS_API_KEY,
+            project=config.HOPSWORKS_PROJECT_NAME,
+        )
+        mr = project.get_model_registry()
+
+        hw_model = mr.get_best_model(
+            name=f"aqi_best_model_{horizon_name}",
+            metric="rmse",
+            direction="min"
+        )
+
+        download_dir = Path(hw_model.download())
+
+        model = joblib.load(download_dir / "best_model.joblib")
+
+        with open(download_dir / "model_metadata.json", "r") as f:
+            metadata = json.load(f)
+
+        scaler = None
+        if metadata.get("needs_scaler"):
+            scaler = joblib.load(download_dir / "scaler.joblib")
+
+        return model, scaler, metadata
+
+    except Exception as e:
+        print(f"Hopsworks model loading failed: {e}")
+        print(f"Using local {horizon_name} model instead.")
+
+        local_dir = config.MODEL_DIR / horizon_name
+
+        model_file = local_dir / "best_model.joblib"
+        metadata_file = local_dir / "model_metadata.json"
+        scaler_file = local_dir / "scaler.joblib"
+
+        model = joblib.load(model_file)
+
+        with open(metadata_file, "r") as f:
+            metadata = json.load(f)
+
+        scaler = None
+        if metadata.get("needs_scaler"):
+            scaler = joblib.load(scaler_file)
+
+        return model, scaler, metadata
 
 def get_live_row():
     #converts city name to long lat coordinates
