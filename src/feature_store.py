@@ -14,47 +14,86 @@ def get_feature_store():
     return fs
 
 #this function adds new rows to all the previous saved rows
-def save_row(row):
-    fs = get_feature_store()
+#def save_row(row):
+#    fs = get_feature_store()
 
     #get (or create, if it doesn't exist yet) a feature group called "aqi_features"
-    fg = fs.get_or_create_feature_group(
-        name="aqi_features",
-        version=1,
-        primary_key=["city", "timestamp"],
-        description="AQI and weather features for Karachi",
-        time_travel_format="HUDI",
-    )
+    #fg = fs.get_or_create_feature_group(
+        #name="aqi_features",
+        #version=1,
+       # primary_key=["city", "timestamp"],
+      # description="AQI and weather features for Karachi",
+     #   time_travel_format="HUDI",
+    #)
 
     #wrap the row in a DataFrame, same as before
-    newrow_df = pd.DataFrame([row])
+   # newrow_df = pd.DataFrame([row])
 
     #insert this row into the feature group
-    fg.insert(newrow_df)
-    print("Saved row to Hopsworks feature store.")
+  #  fg.insert(newrow_df)
+ #   print("Saved row to Hopsworks feature store.")
 
 
-def get_last_row():
-    fs = get_feature_store()
+#changed because hospworks free trial was not working, so now it saves to a local parquet file instead
 
-    #get the same feature group we save to
-    fg = fs.get_or_create_feature_group(
-        name="aqi_features",
-        version=1,
-        primary_key=["city", "timestamp"],
-        description="AQI and weather features for Karachi",
-        time_travel_format="HUDI",
-    )
+def save_row(row):
+    try:
+        # Try Hopsworks first
+        fs = get_feature_store()
+
+        fg = fs.get_or_create_feature_group(
+            name="aqi_features",
+            version=1,
+            primary_key=["city", "timestamp"],
+            description="AQI and weather features for Karachi",
+            time_travel_format="HUDI",
+        )
+
+        newrow_df = pd.DataFrame([row])
+        fg.insert(newrow_df)
+        print("Saved row to Hopsworks feature store.")
+
+    except Exception as e:
+        # If Hopsworks is unavailable, save locally instead
+        print(f"Hopsworks save failed: {e}")
+        print("Saving row to local feature store instead.")
+
+        local_file = config.FEATURE_STORE_FILE
+
+        newrow_df = pd.DataFrame([row])
+
+        if local_file.exists():
+            existing_df = pd.read_parquet(local_file)
+            df = pd.concat([existing_df, newrow_df], ignore_index=True)
+        else:
+            df = newrow_df
+
+        df.to_parquet(local_file, index=False)
+        print(f"Saved row locally to {local_file}")
+
+
+
+#def get_last_row():
+   # fs = get_feature_store()
+
+  #get the same feature group we save to
+#  fg = fs.get_or_create_feature_group(
+     #   name="aqi_features",
+      #  version=1,
+       # primary_key=["city", "timestamp"],
+        #description="AQI and weather features for Karachi",
+        #time_travel_format="HUDI",
+    #)
 
     #read all data currently in the feature group
-    df = fg.read()
+    #df = fg.read()
 
-    if len(df) == 0:
-        return None
+    #if len(df) == 0:
+     #   return None
 
     #sort by timestamp so the most recent row is last, then grab it
-    df = df.sort_values("timestamp")
-    return df.iloc[-1].to_dict()
+    #df = df.sort_values("timestamp")
+   # return df.iloc[-1].to_dict()
 
 
 
@@ -62,7 +101,39 @@ def get_last_row():
 #last = get_last_row()
 #print(last)
 
+def get_last_row():
+    try:
+        # Try Hopsworks first
+        fs = get_feature_store()
 
+        fg = fs.get_or_create_feature_group(
+            name="aqi_features",
+            version=1,
+            primary_key=["city", "timestamp"],
+            description="AQI and weather features for Karachi",
+            time_travel_format="HUDI",
+        )
+
+        df = fg.read()
+
+    except Exception as e:
+        # Fall back to local Parquet file
+        print(f"Hopsworks read failed: {e}")
+        print("Reading local feature store instead.")
+
+        if not config.FEATURE_STORE_FILE.exists():
+            return None
+
+        df = pd.read_parquet(config.FEATURE_STORE_FILE)
+
+    if len(df) == 0:
+        return None
+
+    df["timestamp"] = pd.to_datetime(df["timestamp"], format="mixed", errors="coerce")
+    df = df.dropna(subset=["timestamp"])
+    df = df.sort_values("timestamp")
+
+    return df.iloc[-1].to_dict()
 
 
 

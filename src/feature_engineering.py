@@ -21,16 +21,52 @@ def build_feature_row(city_name, weather_data,pollution_data):
 
   previous_row = get_last_row()
 
+#  if previous_row is not None and "timestamp" in previous_row:
+       # previous_time = datetime.fromisoformat(previous_row["timestamp"])
+      #  hours_elapsed = (now - previous_time).total_seconds() / 3600
+     #   if hours_elapsed > 0:
+    #        aqi_change_rate = (aqi - previous_row["aqi"]) / hours_elapsed
+   #     else:
+  #          aqi_change_rate = 0.0
+ # else:
+#        aqi_change_rate = 0.0
+
+
+
+
+        #------------------------------REPLACCEECECECECECECECECECE
+
   if previous_row is not None and "timestamp" in previous_row:
-        previous_time = datetime.fromisoformat(previous_row["timestamp"])
-        hours_elapsed = (now - previous_time).total_seconds() / 3600
-        if hours_elapsed > 0:
-            aqi_change_rate = (aqi - previous_row["aqi"]) / hours_elapsed
+    previous_timestamp = previous_row["timestamp"]
+
+    try:
+        if isinstance(previous_timestamp, str):
+            previous_time = datetime.fromisoformat(previous_timestamp)
+        elif isinstance(previous_timestamp, datetime):
+            previous_time = previous_timestamp
+        elif hasattr(previous_timestamp, "to_pydatetime"):
+            previous_time = previous_timestamp.to_pydatetime()
+        else:
+            previous_time = None
+
+        if previous_time is not None:
+            hours_elapsed = (now - previous_time).total_seconds() / 3600
+
+            if hours_elapsed > 0:
+                aqi_change_rate = (
+                    (aqi - previous_row["aqi"]) / hours_elapsed
+                )
+            else:
+                aqi_change_rate = 0.0
         else:
             aqi_change_rate = 0.0
-  else:
+
+    except (TypeError, ValueError):
         aqi_change_rate = 0.0
 
+  else:
+    aqi_change_rate = 0.0
+        
   #dict to keep all the data in one place
   row = {
     "city": city_name,

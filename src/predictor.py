@@ -9,24 +9,85 @@ from pathlib import Path
 from src.feature_store import get_feature_store
 from src.feature_store import save_row
 
+#def get_recent_rolling_averages():
+ #   fs = get_feature_store()
+  #  fg = fs.get_or_create_feature_group(
+   #     name="aqi_features", version=1, primary_key=["city", "timestamp"],
+    #    description="AQI and weather features for Karachi", time_travel_format="HUDI",
+    #)
+    #df = fg.read()
+    #df["timestamp"] = pd.to_datetime(df["timestamp"], format="mixed")
+   # df = df.sort_values("timestamp")
+
+    #latest_time = df["timestamp"].max()
+
+#    return {
+ #       "aqi_avg_24h": df[df["timestamp"] >= latest_time - pd.Timedelta(hours=24)]["aqi"].mean(),
+  ##     "aqi_avg_72h": df[df["timestamp"] >= latest_time - pd.Timedelta(hours=72)]["aqi"].mean(),
+    #}
+
+
+
 def get_recent_rolling_averages():
-    fs = get_feature_store()
-    fg = fs.get_or_create_feature_group(
-        name="aqi_features", version=1, primary_key=["city", "timestamp"],
-        description="AQI and weather features for Karachi", time_travel_format="HUDI",
+    try:
+        # Try Hopsworks first
+        fs = get_feature_store()
+
+        fg = fs.get_or_create_feature_group(
+            name="aqi_features",
+            version=1,
+            primary_key=["city", "timestamp"],
+            description="AQI and weather features for Karachi",
+            time_travel_format="HUDI",
+        )
+
+        df = fg.read()
+
+    except Exception as e:
+        # If Hopsworks is unavailable, use the local Parquet feature store
+        print(f"Hopsworks rolling-average read failed: {e}")
+        print("Using local feature store for rolling averages.")
+
+        if not config.FEATURE_STORE_FILE.exists():
+            return {
+                "aqi_avg_24h": 0.0,
+                "aqi_avg_48h": 0.0,
+                "aqi_avg_72h": 0.0,
+            }
+
+        df = pd.read_parquet(config.FEATURE_STORE_FILE)
+
+    if df.empty:
+        return {
+            "aqi_avg_24h": 0.0,
+            "aqi_avg_48h": 0.0,
+            "aqi_avg_72h": 0.0,
+        }
+
+    df["timestamp"] = pd.to_datetime(
+        df["timestamp"],
+        format="mixed",
+        errors="coerce"
     )
-    df = fg.read()
-    df["timestamp"] = pd.to_datetime(df["timestamp"], format="mixed")
+
+    df = df.dropna(subset=["timestamp"])
     df = df.sort_values("timestamp")
 
     latest_time = df["timestamp"].max()
 
     return {
-        "aqi_avg_24h": df[df["timestamp"] >= latest_time - pd.Timedelta(hours=24)]["aqi"].mean(),
-        "aqi_avg_48h": df[df["timestamp"] >= latest_time - pd.Timedelta(hours=48)]["aqi"].mean(),
-        "aqi_avg_72h": df[df["timestamp"] >= latest_time - pd.Timedelta(hours=72)]["aqi"].mean(),
-    }
+        "aqi_avg_24h": df[
+            df["timestamp"] >= latest_time - pd.Timedelta(hours=24)
+        ]["aqi"].mean(),
 
+        "aqi_avg_48h": df[
+            df["timestamp"] >= latest_time - pd.Timedelta(hours=48)
+        ]["aqi"].mean(),
+
+        "aqi_avg_72h": df[
+            df["timestamp"] >= latest_time - pd.Timedelta(hours=72)
+        ]["aqi"].mean(),
+    }
 
 #def load_model(horizon_name):
     # log in to Hopsworks so we can reach the Model Registry
