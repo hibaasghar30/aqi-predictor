@@ -189,7 +189,7 @@ def render_aqi_card(label, aqi_value, glow_color=None, number_color=None):
     st.markdown(f"""
         <div style="background-color:{box_color}22; border: 1px solid {box_color}88;
                     border-left: 6px solid {severity_color}; padding: 12px 16px;
-                    border-radius: 8px; margin-bottom: 20px;min-height: 170px;;
+                    border-radius: 8px; margin-bottom: 20px;min-height: 170px;
                     box-shadow: 0 0 12px {box_color}55;">
             <div style="font-size: 14px; color: #888;">{label}</div>
             <div style="font-size: 32px; font-weight: 700; color: {text_color};">{aqi_value}</div>
@@ -415,12 +415,45 @@ if st.session_state.view == "main":
     st.divider()
     st.subheader("Recent Trend & Forecast")
 
+  #  history_df = load_recent_history(days=7)
+
+    #chart_df = history_df[["timestamp", "aqi"]].copy()
+   # chart_df["type"] = "Historical"
+
+  #  last_time = history_df["timestamp"].max()
+ #   forecast_rows = pd.DataFrame([
+     #   {"timestamp": last_time + timedelta(hours=24), "aqi": predictions["24h"]["value"], "type": "Forecast"},
+    #  ])
+
+ #   chart_df = pd.concat([chart_df, forecast_rows], ignore_index=True)
+#   chart_df = chart_df.set_index("timestamp")
+
+#    st.line_chart(chart_df, y="aqi", color="type")
+
+
+
+
+
     history_df = load_recent_history(days=7)
+
+    # Add the fresh live row to the historical data so the chart
+    # always includes the latest AQI reading.
+    current_row = pd.DataFrame([{
+        "timestamp": pd.to_datetime(row["timestamp"]),
+        "aqi": row["aqi"],
+        "type": "Historical"
+    }])
 
     chart_df = history_df[["timestamp", "aqi"]].copy()
     chart_df["type"] = "Historical"
 
-    last_time = history_df["timestamp"].max()
+    chart_df = pd.concat([chart_df, current_row], ignore_index=True)
+    chart_df = chart_df.drop_duplicates(subset=["timestamp"], keep="last")
+    chart_df = chart_df.sort_values("timestamp")
+
+    # Anchor forecasts to the fresh current timestamp.
+    last_time = pd.to_datetime(row["timestamp"])
+
     forecast_rows = pd.DataFrame([
         {"timestamp": last_time + timedelta(hours=24), "aqi": predictions["24h"]["value"], "type": "Forecast"},
         {"timestamp": last_time + timedelta(hours=48), "aqi": predictions["48h"]["value"], "type": "Forecast"},
@@ -431,7 +464,6 @@ if st.session_state.view == "main":
     chart_df = chart_df.set_index("timestamp")
 
     st.line_chart(chart_df, y="aqi", color="type")
-
 
 elif st.session_state.view == "yearly_chart":
     if st.button("⬅ Back"):
